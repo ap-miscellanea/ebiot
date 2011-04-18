@@ -31,7 +31,7 @@ $pc->reg_cb(
 			http_get $uri, sub {
 				my ( $body, $hdr ) = @_;
 
-				my $send = sub { $pc->send_srv( PRIVMSG => $channel, encode_ctcp @_ ) };
+				my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $channel, encode_ctcp @_ ) };
 
 				if ( 200 ne $hdr->{'Status'} ) {
 					$send->( [ ACTION => q(can't open the dictionary) ] );
