@@ -46,6 +46,11 @@ $pc->reg_cb(
 						$send->( $result->{'definition'} );
 					}
 
+					when ( 'full_text' ) {
+						$send->( [ ACTION => "found that in the definition for '$result->{'word'}'" ] );
+						$send->( $result->{'definition'} );
+					}
+
 					default {
 						$send->( [ ACTION => q(can't find that in the dictionary) ] );
 					}
