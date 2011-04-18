@@ -23,17 +23,32 @@ my $pc = AnyEvent::IRC::Client->new;
 $pc->reg_cb(
 	publicmsg => sub {
 		my ( $self, $channel, $msg ) = @_;
+
 		if ( $msg->{'params'}->[-1] =~ m/^!urban\s+(.*)/ ) {
 			$uri->query_param( term => $1 );
 			warn "Fetching $uri\n";
+
 			http_get $uri, sub {
 				my ( $body, $hdr ) = @_;
-				my $result = 200 eq $hdr->{'Status'} ? decode_json $body : {};
-				if ( 'exact' eq $result->{'result_type'} ) {
-					$pc->send_srv( PRIVMSG => $channel, $result->{'list'}[0]{'definition'} );
+
+				my $send = sub { $pc->send_srv( PRIVMSG => $channel, encode_ctcp @_ ) };
+
+				if ( 200 ne $hdr->{'Status'} ) {
+					$send->( [ ACTION => q(can't open the dictionary) ] );
+					return;
 				}
-				else {
-					$pc->send_srv( PRIVMSG => $channel, encode_ctcp [ ACTION => q(can't find that in the dictionary) ] );
+
+				my $found  = decode_json $body;
+				my $result = ( $found->{'list'} // [] )->[0];
+
+				given ( $found->{'result_type'} ) {
+					when ( 'exact' ) {
+						$send->( $result->{'definition'} );
+					}
+
+					default {
+						$send->( [ ACTION => q(can't find that in the dictionary) ] );
+					}
 				}
 			};
 		}
