@@ -1,0 +1,51 @@
+#!/usr/bin/env perl
+use 5.010;
+use strict;
+
+use AnyEvent::IRC::Client ();
+use AnyEvent::IRC::Util qw( encode_ctcp );
+use AnyEvent::HTTP qw( http_get );
+use URI ();
+use URI::QueryParam ();
+use JSON::XS qw( decode_json );
+
+die "usage: $0 <server> <port> <channel> <nick>\n"
+	if 4 != @ARGV;
+
+my ( $server, $port, $channel, $nick ) = @ARGV;
+
+my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
+
+my $c = AnyEvent->condvar;
+
+my $pc = AnyEvent::IRC::Client->new;
+
+$pc->reg_cb(
+	publicmsg => sub {
+		my ( $self, $channel, $msg ) = @_;
+		if ( $msg->{'params'}->[-1] =~ m/^!urban\s+(.*)/ ) {
+			$uri->query_param( term => $1 );
+			warn "Fetching $uri\n";
+			http_get $uri, sub {
+				my ( $body, $hdr ) = @_;
+				my $result = 200 eq $hdr->{'Status'} ? decode_json $body : {};
+				if ( 'exact' eq $result->{'result_type'} ) {
+					$pc->send_srv( PRIVMSG => $channel, $result->{'list'}[0]{'definition'} );
+				}
+				else {
+					$pc->send_srv( PRIVMSG => $channel, encode_ctcp [ ACTION => q(can't find that in the dictionary) ] );
+				}
+			};
+		}
+	}
+);
+
+$pc->send_srv( JOIN => $channel );
+
+$pc->connect( $server, $port, {
+	nick => $nick,
+	user => $nick,
+	real => 'some dumb little bot',
+} );
+
+$c->wait;
