@@ -39,22 +39,24 @@ $pc->reg_cb(
 				}
 
 				my $found  = decode_json $body;
-				my $result = ( $found->{'list'} // [] )->[0];
+				my $result = ( $found->{'list'} // [] )->[0] // {};
+				my $definition = $result->{'definition'};
 
 				given ( $found->{'result_type'} ) {
-					when ( 'exact' ) {
-						$send->( $result->{'definition'} );
-					}
+					when ( 'exact' ) {}
 
 					when ( 'full_text' ) {
 						$send->( [ ACTION => "found that in the definition for '$result->{'word'}'" ] );
-						$send->( $result->{'definition'} );
 					}
 
 					default {
 						$send->( [ ACTION => q(can't find that in the dictionary) ] );
+						return;
 					}
 				}
+
+				$definition =~ s/\s+/ /g;
+				$send->( $definition );
 			};
 		}
 	}
