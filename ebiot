@@ -8,6 +8,7 @@ use AnyEvent::HTTP qw( http_get );
 use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
+use Image::Size qw( imgsize );
 
 die "usage: $0 <server> <port> <channel> <nick>\n"
 	if 4 != @ARGV;
@@ -65,24 +66,37 @@ $pc->reg_cb(
 			my $uri = $1;
 			warn $uri, "\n";
 
-			my $title;
+			my ( $is_html, $title );
+			my ( $is_img, $width, $height, $type );
 			my $body = '';
 			http_get $uri, (
 				on_header => sub {
 					my $hdr = shift;
 					return 1 if $hdr->{'Status'} =~ /^3/;
-					return 0 if 200 ne $hdr->{'Status'};
-					$hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
+					return if 200 ne $hdr->{'Status'};
+					return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
+					return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
+					return;
 				},
 				on_body => sub {
 					return 1 if 200 ne $_[1]{'Status'};
 					$body .= shift;
-					return 1 unless $body =~ m!<title>([^<]*)<!i;
-					$title = $1;
+					if ( $is_html ) {
+						return 1 unless $body =~ m!<title>([^<]*)<!i;
+						$title = $1;
+					}
+					elsif ( $is_img ) {
+						( $width, $height, $type ) = imgsize \$body;
+						return 1 unless defined $width;
+					}
 					return;
 				},
 				sub {
-					$title //= ( $body =~ m!<title>([^<]*)<!i )[0];
+					$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
+					if ( $is_img ) {
+						( $width, $height, $type ) = imgsize \$body if not defined $width;
+						$title = "$type image, $width \xD7 $height" if defined $width;
+					}
 					return if not defined $title;
 					$title =~ s/\s+/ /g;
 					$send->( "[ $title ]" ) if $title =~ /\S/;
