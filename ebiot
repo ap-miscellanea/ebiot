@@ -108,10 +108,16 @@ $pc->reg_cb(
 
 my $c = AnyEvent->condvar;
 
-my $w;
+my @w;
 $pc->reg_cb(
-	registered => sub { $w = AnyEvent->signal( signal => 'INT', cb => sub { $pc->send_msg( QUIT => 'Bye' ) } ) },
-	disconnect => sub { undef $w; $c->broadcast },
+	registered => sub {
+		my $quit = sub { $pc->send_msg( QUIT => 'Bye' ) };
+		@w = map {
+			my $sig = $_;
+			AnyEvent->signal( signal => $sig, cb => $quit );
+		} qw( INT QUIT TERM );
+	},
+	disconnect => sub { @w = (); $c->broadcast },
 );
 
 $pc->send_srv( JOIN => $channel );
