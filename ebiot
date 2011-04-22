@@ -30,7 +30,7 @@ $pc->reg_cb(
 
 		if ( m/^!urban\s+(.*)/ ) {
 			$uri->query_param( term => $1 );
-			warn "Fetching $uri\n";
+			warn $uri, "\n";
 
 			http_get $uri, sub {
 				my ( $body, $hdr ) = @_;
@@ -63,7 +63,7 @@ $pc->reg_cb(
 		}
 		elsif ( m!\b(https?://\S+)!i ) {
 			my $uri = $1;
-			warn "Fetching $uri\n";
+			warn $uri, "\n";
 
 			my $title;
 			my $body = '';
