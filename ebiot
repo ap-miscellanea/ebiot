@@ -16,11 +16,9 @@ my ( $server, $port, $channel, $nick ) = @ARGV;
 
 my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
 
-my $c = AnyEvent->condvar;
+$AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
 my $pc = AnyEvent::IRC::Client->new;
-
-$AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
 $pc->reg_cb(
 	publicmsg => sub {
@@ -92,6 +90,14 @@ $pc->reg_cb(
 			);
 		}
 	}
+);
+
+my $c = AnyEvent->condvar;
+
+my $w;
+$pc->reg_cb(
+	registered => sub { $w = AnyEvent->signal( signal => 'INT', cb => sub { $pc->disconnect } ) },
+	disconnect => sub { $c->broadcast },
 );
 
 $pc->send_srv( JOIN => $channel );
