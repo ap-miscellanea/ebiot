@@ -111,7 +111,7 @@ my $c = AnyEvent->condvar;
 my $w;
 $pc->reg_cb(
 	registered => sub { $w = AnyEvent->signal( signal => 'INT', cb => sub { $pc->send_msg( QUIT => 'Bye' ) } ) },
-	disconnect => sub { $c->broadcast },
+	disconnect => sub { undef $w; $c->broadcast },
 );
 
 $pc->send_srv( JOIN => $channel );
