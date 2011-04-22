@@ -85,7 +85,7 @@ $pc->reg_cb(
 					$title //= ( $body =~ m!<title>([^<]*)<!i )[0];
 					return if not defined $title;
 					$title =~ s/\s+/ /g;
-					$send->( "[ $title ]" );
+					$send->( "[ $title ]" ) if $title =~ /\S/;
 				},
 			);
 		}
