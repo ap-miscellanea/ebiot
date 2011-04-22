@@ -24,14 +24,14 @@ $pc->reg_cb(
 	publicmsg => sub {
 		my ( $self, $channel, $msg ) = @_;
 
+		my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $channel, encode_ctcp @_ ) };
+
 		if ( $msg->{'params'}->[-1] =~ m/^!urban\s+(.*)/ ) {
 			$uri->query_param( term => $1 );
 			warn "Fetching $uri\n";
 
 			http_get $uri, sub {
 				my ( $body, $hdr ) = @_;
-
-				my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $channel, encode_ctcp @_ ) };
 
 				if ( 200 ne $hdr->{'Status'} ) {
 					$send->( [ ACTION => q(can't open the dictionary) ] );
