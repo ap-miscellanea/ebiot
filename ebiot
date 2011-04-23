@@ -118,7 +118,7 @@ $pc->reg_cb(
 		} qw( INT QUIT TERM );
 		$pc->enable_ping( 11 );
 	},
-	disconnect => sub { @w = (); $c->broadcast },
+	disconnect => sub { @w = (); $c->send },
 );
 
 $pc->send_srv( JOIN => $channel );
@@ -129,4 +129,4 @@ $pc->connect( $server, $port, {
 	real => 'some dumb little bot',
 } );
 
-$c->wait;
+$c->recv;
