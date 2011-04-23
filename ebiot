@@ -13,7 +13,7 @@ use Image::Size qw( imgsize );
 die "usage: $0 <server> <port> <channel> <nick>\n"
 	if 4 != @ARGV;
 
-my ( $server, $port, $channel, $nick ) = @ARGV;
+my ( $server, $port, $chan, $nick ) = @ARGV;
 
 my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
 
@@ -23,9 +23,9 @@ my $pc = AnyEvent::IRC::Client->new;
 
 $pc->reg_cb(
 	publicmsg => sub {
-		my ( $self, $channel, $msg ) = @_;
+		my ( $self, $chan, $msg ) = @_;
 
-		my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $channel, encode_ctcp @_ ) };
+		my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $chan, encode_ctcp @_ ) };
 
 		my $_ = $msg->{'params'}->[-1];
 
@@ -130,7 +130,7 @@ $pc->reg_cb(
 	disconnect => sub { @w = (); $c->send },
 );
 
-$pc->send_srv( JOIN => $channel );
+$pc->send_srv( JOIN => $chan );
 
 $pc->connect( $server, $port, {
 	nick => $nick,
