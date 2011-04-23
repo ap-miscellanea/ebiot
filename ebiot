@@ -62,46 +62,55 @@ $pc->reg_cb(
 				$send->( $definition );
 			};
 		}
-		elsif ( m!\b(https?://\S+)!i ) {
-			my $uri = $1;
-			warn $uri, "\n";
+		elsif ( my @uri = m!\b(https?://\S+)!gi ) {
+			my %title;
+			for my $uri ( @uri ) {
+				warn $uri, "\n";
 
-			my ( $is_html, $title );
-			my ( $is_img, $width, $height, $type );
-			my $body = '';
-			http_get $uri, (
-				on_header => sub {
-					my $hdr = shift;
-					return 1 if $hdr->{'Status'} =~ /^3/;
-					return if 200 ne $hdr->{'Status'};
-					return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
-					return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
-					return;
-				},
-				on_body => sub {
-					return 1 if 200 ne $_[1]{'Status'};
-					$body .= shift;
-					if ( $is_html ) {
-						return 1 unless $body =~ m!<title>([^<]*)<!i;
-						$title = $1;
-					}
-					elsif ( $is_img ) {
-						( $width, $height, $type ) = imgsize \$body;
-						return 1 unless defined $width;
-					}
-					return;
-				},
-				sub {
-					$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
-					if ( $is_img ) {
-						( $width, $height, $type ) = imgsize \$body if not defined $width;
-						$title = "$type image, $width \xD7 $height" if defined $width;
-					}
-					return if not defined $title;
-					$title =~ s/\s+/ /g;
-					$send->( "[ $title ]" ) if $title =~ /\S/;
-				},
-			);
+				my ( $is_html, $title );
+				my ( $is_img, $width, $height, $type );
+				my $body = '';
+				http_get $uri, (
+					on_header => sub {
+						my $hdr = shift;
+						return 1 if $hdr->{'Status'} =~ /^3/;
+						return if 200 ne $hdr->{'Status'};
+						return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
+						return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
+						return;
+					},
+					on_body => sub {
+						return 1 if 200 ne $_[1]{'Status'};
+						$body .= shift;
+						if ( $is_html ) {
+							return 1 unless $body =~ m!<title>([^<]*)<!i;
+							$title = $1;
+						}
+						elsif ( $is_img ) {
+							( $width, $height, $type ) = imgsize \$body;
+							return 1 unless defined $width;
+						}
+						return;
+					},
+					sub {
+						$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
+						if ( $is_img ) {
+							( $width, $height, $type ) = imgsize \$body if not defined $width;
+							$title = "$type image, $width \xD7 $height" if defined $width;
+						}
+						if ( defined $title ) {
+							$title =~ s/\s+/ /g;
+							undef $title if $title !~ /\S/;
+						}
+						$title{ $uri } = $title;
+						# ensure titles are printed in original sequence of their URIs:
+						while ( exists $title{ $uri[0] } ) {
+							my $title = $title{ shift @uri } // next;
+							$send->( "[ $title ]" );
+						}
+					},
+				);
+			}
 		}
 	}
 );
