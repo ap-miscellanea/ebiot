@@ -10,132 +10,156 @@ use URI::QueryParam ();
 use JSON::XS qw( decode_json );
 use Image::Size qw( imgsize );
 
-die "usage: $0 <server> <port> <channel> <nick>\n"
-	if 4 != @ARGV;
-
-my ( $server, $port, $chan, $nick ) = @ARGV;
-
-my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
-
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
-my $pc = AnyEvent::IRC::Client->new;
+sub normalize {
+	( map {
+		$_ .= '';
+		s/\s+/ /g;
+		s/\A //;
+		s/ \z//;
+		(length) ? $_ : ();
+	} @_ )[ 0 .. $#_ ]
+}
 
-$pc->reg_cb(
+sub lookup_urbandict {
+	my ( $term, $cb ) = @_;
+
+	warn "!urban $term\n";
+
+	my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
+	$uri->query_param( term => $term );
+
+	http_get $uri, sub {
+		my ( $body, $hdr ) = @_;
+		$cb->(), return if 200 ne $hdr->{'Status'};
+		my $found  = decode_json $body;
+		$cb->( $found->{'result_type'}, $found->{'list'}[0] // {} );
+	};
+}
+
+sub get_title_for_uri {
+	my ( $uri, $cb ) = @_;
+
+	warn "$uri\n";
+
+	my ( $is_html, $title );
+	my ( $is_img, $width, $height, $type );
+	my $body = '';
+	http_get $uri, (
+		on_header => sub {
+			my $hdr = shift;
+			return 1 if $hdr->{'Status'} =~ /^3/;
+			return if 200 ne $hdr->{'Status'};
+			return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
+			return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
+			return;
+		},
+		on_body => sub {
+			return 1 if 200 ne $_[1]{'Status'};
+			$body .= shift;
+			if ( $is_html ) {
+				return 1 unless $body =~ m!<title>([^<]*)<!i;
+				$title = $1;
+			}
+			elsif ( $is_img ) {
+				( $width, $height, $type ) = imgsize \$body;
+				return 1 unless defined $width;
+			}
+			return;
+		},
+		sub {
+			$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
+			if ( $is_img ) {
+				( $width, $height, $type ) = imgsize \$body if not defined $width;
+				$title = "$type image, $width \xD7 $height" if defined $width;
+			}
+			$cb->( $title );
+		},
+	);
+}
+
+sub main_loop {
+	my ( $irc, $server, $port, $chan, $nick ) = @_;
+
+	my $c = AnyEvent->condvar;
+
+	my @w;
+	$irc->reg_cb(
+		registered => sub {
+			my $quit = sub { $irc->send_msg( QUIT => 'Bye' ) };
+			@w = map {
+				my $sig = $_;
+				AnyEvent->signal( signal => $sig, cb => $quit );
+			} qw( INT QUIT TERM );
+			$irc->enable_ping( 11 );
+		},
+		disconnect => sub { @w = (); $c->send },
+	);
+
+	my ( $server, $port, $chan, $nick ) = @ARGV;
+
+	$irc->send_srv( JOIN => $chan );
+
+	$irc->connect( $server, $port, {
+		nick => $nick,
+		user => $nick,
+		real => 'some dumb little bot',
+	} );
+
+	$c->recv;
+}
+
+my $irc = AnyEvent::IRC::Client->new;
+
+$irc->reg_cb(
 	publicmsg => sub {
 		my ( $self, $chan, $msg ) = @_;
 
-		my $send = sub { $pc->send_long_message( 'UTF-8', 0, PRIVMSG => $chan, encode_ctcp @_ ) };
+		my $send = sub { $irc->send_long_message( 'UTF-8', 0, PRIVMSG => $chan, encode_ctcp @_ ) };
 
 		my $_ = $msg->{'params'}->[-1];
 
 		if ( m/^!urban\s+(.*)/ ) {
-			$uri->query_param( term => $1 );
-			warn $uri, "\n";
-
-			http_get $uri, sub {
-				my ( $body, $hdr ) = @_;
-
-				if ( 200 ne $hdr->{'Status'} ) {
-					$send->( [ ACTION => q(can't open the dictionary) ] );
-					return;
-				}
-
-				my $found  = decode_json $body;
-				my $result = ( $found->{'list'} // [] )->[0] // {};
-				my $definition = $result->{'definition'};
-
-				given ( $found->{'result_type'} ) {
-					when ( 'exact' ) {}
-
-					when ( 'full_text' ) {
-						$send->( [ ACTION => "found that in the definition for '$result->{'word'}'" ] );
+			lookup_urbandict $1, sub {
+				my ( $type, $res ) = @_;
+				given ( $type ) {
+					when ( undef ) {
+						$send->( [ ACTION => q(can't open the dictionary) ] );
+						return;
 					}
-
+					when ( 'exact' ) {}
+					when ( 'full_text' ) {
+						$send->( [ ACTION => "found that in the definition for '$res->{'word'}'" ] );
+					}
 					default {
 						$send->( [ ACTION => q(can't find that in the dictionary) ] );
 						return;
 					}
 				}
-
-				$definition =~ s/\s+/ /g;
-				$send->( $definition );
+				my $def = normalize $res->{'definition'};
+				$send->( $def ) if defined $def;
 			};
 		}
 		elsif ( my @uri = m!\b(https?://\S+)!gi ) {
+			# ensure titles are printed in original sequence of their URIs:
 			my %title;
 			for my $uri ( @uri ) {
-				warn $uri, "\n";
-
-				my ( $is_html, $title );
-				my ( $is_img, $width, $height, $type );
-				my $body = '';
-				http_get $uri, (
-					on_header => sub {
-						my $hdr = shift;
-						return 1 if $hdr->{'Status'} =~ /^3/;
-						return if 200 ne $hdr->{'Status'};
-						return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
-						return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
-						return;
-					},
-					on_body => sub {
-						return 1 if 200 ne $_[1]{'Status'};
-						$body .= shift;
-						if ( $is_html ) {
-							return 1 unless $body =~ m!<title>([^<]*)<!i;
-							$title = $1;
-						}
-						elsif ( $is_img ) {
-							( $width, $height, $type ) = imgsize \$body;
-							return 1 unless defined $width;
-						}
-						return;
-					},
-					sub {
-						$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
-						if ( $is_img ) {
-							( $width, $height, $type ) = imgsize \$body if not defined $width;
-							$title = "$type image, $width \xD7 $height" if defined $width;
-						}
-						if ( defined $title ) {
-							$title =~ s/\s+/ /g;
-							undef $title if $title !~ /\S/;
-						}
-						$title{ $uri } = $title;
-						# ensure titles are printed in original sequence of their URIs:
-						while ( exists $title{ $uri[0] } ) {
-							my $title = $title{ shift @uri } // next;
-							$send->( "[ $title ]" );
-						}
-					},
-				);
+				get_title_for_uri $uri, sub {
+					my ( $title ) = @_;
+					$title = normalize $title if defined $title;
+					$title{ $uri } = $title;
+					while ( exists $title{ $uri[0] } ) {
+						my $title = $title{ shift @uri } // next;
+						$send->( "[ $title ]" );
+					}
+				};
 			}
 		}
 	}
 );
 
-my $c = AnyEvent->condvar;
+die "usage: $0 <server> <port> <channel> <nick>\n"
+	if 4 != @ARGV;
 
-my @w;
-$pc->reg_cb(
-	registered => sub {
-		my $quit = sub { $pc->send_msg( QUIT => 'Bye' ) };
-		@w = map {
-			my $sig = $_;
-			AnyEvent->signal( signal => $sig, cb => $quit );
-		} qw( INT QUIT TERM );
-		$pc->enable_ping( 11 );
-	},
-	disconnect => sub { @w = (); $c->send },
-);
-
-$pc->send_srv( JOIN => $chan );
-
-$pc->connect( $server, $port, {
-	nick => $nick,
-	user => $nick,
-	real => 'some dumb little bot',
-} );
-
-$c->recv;
+main_loop $irc, @ARGV;
