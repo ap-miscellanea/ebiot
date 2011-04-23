@@ -116,6 +116,7 @@ $pc->reg_cb(
 			my $sig = $_;
 			AnyEvent->signal( signal => $sig, cb => $quit );
 		} qw( INT QUIT TERM );
+		$pc->enable_ping( 11 );
 	},
 	disconnect => sub { @w = (); $c->broadcast },
 );
