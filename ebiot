@@ -25,7 +25,7 @@ sub normalize {
 sub lookup_urbandict {
 	my ( $term, $cb ) = @_;
 
-	warn "!urban $term\n";
+	say '!urban ', $term;
 
 	my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
 	$uri->query_param( term => $term );
@@ -41,7 +41,7 @@ sub lookup_urbandict {
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
-	warn "$uri\n";
+	say $uri;
 
 	my ( $is_html, $title );
 	my ( $is_img, $width, $height, $type );
