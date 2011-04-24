@@ -8,7 +8,6 @@ use AnyEvent::HTTP qw( http_get );
 use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
-use Image::Size qw( imgsize );
 use XML::LibXML ();
 
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
@@ -93,37 +92,22 @@ sub get_title_for_uri {
 
 	say $uri;
 
-	my ( $is_html, $title );
-	my ( $is_img, $width, $height, $type );
-	my $body = '';
+	my ( $body, $title ) = '';
 	http_get $uri, (
 		on_header => sub {
 			my $hdr = shift;
 			return 1 if $hdr->{'Status'} =~ /^3/;
-			return if 200 ne $hdr->{'Status'};
-			return 1 if $is_html = $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
-			return 1 if $is_img  = $hdr->{'content-type'} =~ m!\Aimage/!;
-			return;
+			return 200 eq $hdr->{'Status'} and $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
 		},
 		on_body => sub {
 			return 1 if 200 ne $_[1]{'Status'};
 			$body .= shift;
-			if ( $is_html ) {
-				return 1 unless $body =~ m!<title>([^<]*)<!i;
-				$title = $1;
-			}
-			elsif ( $is_img ) {
-				( $width, $height, $type ) = imgsize \$body;
-				return 1 unless defined $width;
-			}
+			return 1 unless $body =~ m!<title>([^<]*)<!i;
+			$title = $1;
 			return;
 		},
 		sub {
-			$title //= ( $body =~ m!<title>([^<]*)<!i )[0] if $is_html;
-			if ( $is_img ) {
-				( $width, $height, $type ) = imgsize \$body if not defined $width;
-				$title = "$type image, $width \xD7 $height" if defined $width;
-			}
+			$title //= ( $body =~ m!<title>([^<]*)<!i )[0];
 			$cb->( $title );
 		},
 	);
