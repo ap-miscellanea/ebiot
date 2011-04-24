@@ -9,6 +9,7 @@ use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
 use Image::Size qw( imgsize );
+use XML::LibXML ();
 
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
@@ -36,6 +37,55 @@ sub lookup_urbandict {
 		my $found  = decode_json $body;
 		$cb->( $found->{'result_type'}, $found->{'list'}[0] // {} );
 	};
+}
+
+sub lookup_weather {
+	my ( $location, $cb ) = @_;
+
+	say '!weather ', $location;
+
+	my $uri = URI->new( 'http://www.google.com/ig/api?hl=en-gb' );
+	$uri->query_param( weather => $location );
+
+	my $p = XML::LibXML->new;
+	http_get $uri, (
+		on_body => sub {
+			my $hdr = $_[1];
+			return 1 if $hdr->{'Status'} =~ /^3/;
+			return unless 200 eq $hdr->{'Status'} and $hdr->{'content-type'} =~ m!\Atext/xml\s*(?:;|\z)!;
+			$p->parse_chunk( $_[0] );
+			return 1;
+		},
+		sub {
+			my $doc = $p->parse_chunk( '', 1 );
+
+			if ( my ( $problem ) = $doc->findnodes( '//problem_cause' ) ) {
+				$cb->( $problem->findvalue( '@data' ) );
+				return;
+			}
+
+			my ( $cc ) = $doc->findnodes( '//current_conditions' );
+			my ( $outlook ) = map {
+				s!.*/!!;
+				s!\.gif\z!!;
+				join ' ', map ucfirst, split /_+/;
+			} $cc->findvalue( 'icon/@data' );
+
+			my $temp = sprintf "%s\x{B0}F / %s\x{B0}C;  %s, %s", (
+				$cc->findvalue( 'temp_f/@data' ),
+				$cc->findvalue( 'temp_c/@data' ),
+				$cc->findvalue( 'condition/@data' ),
+				$outlook,
+			);
+
+			$cb->(
+				$doc->findvalue( '//forecast_information/city/@data' ),
+				$temp,
+				$cc->findvalue( 'humidity/@data' ),
+				$cc->findvalue( 'wind_condition/@data' ),
+			);
+		},
+	);
 }
 
 sub get_title_for_uri {
@@ -140,6 +190,9 @@ $irc->reg_cb(
 				my $def = normalize $res->{'definition'};
 				$send->( $def ) if defined $def;
 			};
+		}
+		elsif ( m/^!weather\s+(.*)/ ) {
+			lookup_weather $1, sub { $send->( $_ ) for @_ };
 		}
 		elsif ( my @uri = m!\b(https?://\S+)!gi ) {
 			# ensure titles are printed in original sequence of their URIs:
