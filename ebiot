@@ -5,6 +5,7 @@ use strict;
 use AnyEvent::IRC::Client ();
 use AnyEvent::IRC::Util qw( encode_ctcp );
 use AnyEvent::HTTP qw( http_get );
+use MLDBM qw( DB_File JSON );
 use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
@@ -87,6 +88,8 @@ sub lookup_weather {
 	);
 }
 
+tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
+
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
@@ -94,6 +97,7 @@ sub get_title_for_uri {
 
 	my ( $body, $title ) = '';
 	http_get $uri, (
+		cookie_jar => \%cookie_jar,
 		on_header => sub {
 			my $hdr = shift;
 			return 1 if $hdr->{'Status'} =~ /^3/;
