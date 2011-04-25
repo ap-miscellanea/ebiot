@@ -1,10 +1,7 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use 5.010;
 use strict;
-
-use MLDBM qw( DB_File JSON );
-use JSON::XS qw( encode_json );
-
+use MLDBM qw( DB_File Data::Dumper );
+use Data::Dump qw( pp );
 tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
-
-say JSON::XS->new->pretty->space_after->encode( \%cookie_jar );
+pp \%cookie_jar;

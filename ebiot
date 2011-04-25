@@ -5,7 +5,7 @@ use strict;
 use AnyEvent::IRC::Client ();
 use AnyEvent::IRC::Util qw( encode_ctcp );
 use AnyEvent::HTTP qw( http_get );
-use MLDBM qw( DB_File JSON );
+use MLDBM qw( DB_File Data::Dumper );
 use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
