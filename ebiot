@@ -10,6 +10,7 @@ use URI ();
 use URI::QueryParam ();
 use JSON::XS qw( decode_json );
 use XML::LibXML ();
+use HTML::Entities ();
 
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
@@ -90,6 +91,8 @@ sub lookup_weather {
 
 tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
 
+my $title_rx = qr{<title(?: [^>]*)>([^<]*)<}i;
+
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
@@ -115,12 +118,13 @@ sub get_title_for_uri {
 		on_body => sub {
 			return 1 if 200 ne $_[1]{'Status'};
 			$body .= shift;
-			return 1 unless $body =~ m!<title>([^<]*)<!i;
+			return 1 unless $body =~ $title_rx;
 			$title = $1;
 			return;
 		},
 		sub {
-			$title //= ( $body =~ m!<title>([^<]*)<!i )[0];
+			$title //= ( $body =~ $title_rx )[0];
+			$title = HTML::Entities::decode $title if defined $title;
 			$cb->( $title );
 		},
 	);
