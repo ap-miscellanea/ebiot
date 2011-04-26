@@ -96,10 +96,11 @@ sub get_title_for_uri {
 	say $uri;
 
 	my $orig_uri = $uri;
-	given ( $uri ) {
+	for ( $uri ) {
 		when ( m![/.]youtube\..*/user/.*\#.*/(.{11})\z! ) {
 			$uri = 'http://youtube.com/watch?v=' . $1;
 		}
+		when ( s!\Ahttps?://twitter\.com/\#\!/?(.*)!http://twitter.com/$1! ) {}
 	}
 	say '  --> ', $uri if $orig_uri ne $uri;
 
