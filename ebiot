@@ -91,7 +91,7 @@ sub lookup_weather {
 
 tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
 
-my $title_rx = qr{<title(?: [^>]*)>([^<]*)<}i;
+my $title_rx = qr{<title(?: [^>]*)?>([^<]*)<}i;
 
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
