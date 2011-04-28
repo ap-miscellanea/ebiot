@@ -148,8 +148,6 @@ sub main_loop {
 		disconnect => sub { @w = (); $c->send },
 	);
 
-	my ( $server, $port, $chan, $nick ) = @ARGV;
-
 	$irc->send_srv( JOIN => $chan );
 
 	$irc->connect( $server, $port, {
