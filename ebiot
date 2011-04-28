@@ -131,7 +131,7 @@ sub get_title_for_uri {
 }
 
 sub main_loop {
-	my ( $irc, $server, $port, $chan, $nick ) = @_;
+	my ( $irc, $server, $port, $nick, @chan ) = @_;
 
 	my $c = AnyEvent->condvar;
 
@@ -148,7 +148,7 @@ sub main_loop {
 		disconnect => sub { @w = (); $c->send },
 	);
 
-	$irc->send_srv( JOIN => $chan );
+	$irc->send_srv( JOIN => $_ ) for @chan;
 
 	$irc->connect( $server, $port, {
 		nick => $nick,
@@ -211,7 +211,7 @@ $irc->reg_cb(
 	}
 );
 
-die "usage: $0 <server> <port> <channel> <nick>\n"
-	if 4 != @ARGV;
+die "usage: $0 <server> <port> <nick> <channel> [channel ...]\n"
+	if 3 > @ARGV;
 
 main_loop $irc, @ARGV;
