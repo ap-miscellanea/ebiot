@@ -14,6 +14,8 @@ use HTML::Entities ();
 
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
+my $url_rx = qr{\b(https?://\S+)}i;
+
 sub normalize {
 	( map {
 		$_ .= '';
@@ -89,6 +91,8 @@ tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
 
 my $title_rx = qr{<title(?: [^>]*)?>([^<]*)<}i;
 
+sub get_tweet;
+
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
@@ -98,6 +102,11 @@ sub get_title_for_uri {
 			$uri = 'http://youtube.com/watch?v=' . $1;
 		}
 		when ( s!\Ahttps?://twitter\.com/\#\!/?(.*)!http://twitter.com/$1! ) {}
+	}
+
+	if ( $uri =~ m!twitter\.com/.*/status(?:es)?/\d+! ) {
+		get_tweet $uri, $cb;
+		return;
 	}
 
 	my ( $body, $title ) = '';
@@ -119,6 +128,60 @@ sub get_title_for_uri {
 			$title //= ( $body =~ $title_rx )[0];
 			$title = HTML::Entities::decode $title if defined $title;
 			$cb->( $title );
+		},
+	);
+}
+
+my $tweet_rx = qr{<meta content="([^"]*)" name="description"}i;
+my $twit_rx = qr{<meta content="([^"]*)" name="page-user-screen_name"}i;
+
+sub get_tweet {
+	my ( $uri, $cb ) = @_;
+
+	my ( $body, $twit, $tweet ) = '';
+	http_get $uri, (
+		cookie_jar => \%cookie_jar,
+		on_header => sub {
+			my $hdr = shift;
+			return 1 if $hdr->{'Status'} =~ /^3/;
+			return 200 eq $hdr->{'Status'} and $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
+		},
+		on_body => sub {
+			return 1 if 200 ne $_[1]{'Status'};
+			$body .= shift;
+			$tweet //= ( $body =~ $tweet_rx )[0];
+			$twit  //= ( $body =~ $twit_rx )[0];
+			return if defined $tweet and defined $twit;
+			return 1;
+		},
+		sub {
+			$tweet //= ( $body =~ $tweet_rx )[0];
+			$twit  //= ( $body =~ $twit_rx )[0];
+			return unless defined $tweet and defined $twit;
+
+			$tweet = HTML::Entities::decode $tweet;
+
+			my @uri = $tweet =~ m!$url_rx!g;
+
+			if ( not @uri ) {
+				$cb->( "\@$twit: $tweet" );
+				return;
+			}
+
+			my %resolved;
+			for my $uri ( @uri ) {
+				http_get $uri, (
+					cookie_jar => \%cookie_jar,
+					sub {
+						my ( undef, $hdr ) = @_;
+						return if 200 ne $hdr->{'Status'};
+						$resolved{ $uri } = $hdr->{'URL'};
+						return if %resolved < @uri;
+						$tweet =~ s!$url_rx!$resolved{ $1 }!g;
+						$cb->( "\@$twit: $tweet" );
+					},
+				);
+			}
 		},
 	);
 }
@@ -188,7 +251,7 @@ $irc->reg_cb(
 			say "[$chan] !weather $1";
 			lookup_weather $1, sub { $send->( $_ ) for @_ };
 		}
-		elsif ( my @uri = m!\b(https?://\S+)!gi ) {
+		elsif ( my @uri = m!$url_rx!g ) {
 			say "[$chan] $_" for @uri;
 			# ensure titles are printed in original sequence of their URIs:
 			my %title;
