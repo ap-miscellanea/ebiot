@@ -27,8 +27,6 @@ sub normalize {
 sub lookup_urbandict {
 	my ( $term, $cb ) = @_;
 
-	say '!urban ', $term;
-
 	my $uri = URI->new( 'http://www.urbandictionary.com/iphone/search/define' );
 	$uri->query_param( term => $term );
 
@@ -42,8 +40,6 @@ sub lookup_urbandict {
 
 sub lookup_weather {
 	my ( $location, $cb ) = @_;
-
-	say '!weather ', $location;
 
 	my $uri = URI->new( 'http://www.google.com/ig/api?hl=en-gb' );
 	$uri->query_param( weather => $location );
@@ -96,8 +92,6 @@ my $title_rx = qr{<title(?: [^>]*)?>([^<]*)<}i;
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
-	say $uri;
-
 	my $orig_uri = $uri;
 	for ( $uri ) {
 		when ( m![/.]youtube\..*/user/.*\#.*/(.{11})\z! ) {
@@ -105,7 +99,6 @@ sub get_title_for_uri {
 		}
 		when ( s!\Ahttps?://twitter\.com/\#\!/?(.*)!http://twitter.com/$1! ) {}
 	}
-	say '  --> ', $uri if $orig_uri ne $uri;
 
 	my ( $body, $title ) = '';
 	http_get $uri, (
@@ -170,6 +163,7 @@ $irc->reg_cb(
 		my $_ = $msg->{'params'}->[-1];
 
 		if ( m/^!urban\s+(.*)/ ) {
+			say "[$chan] !urban $1";
 			lookup_urbandict $1, sub {
 				my ( $type, $res ) = @_;
 				given ( $type ) {
@@ -191,9 +185,11 @@ $irc->reg_cb(
 			};
 		}
 		elsif ( m/^!weather\s+(.*)/ ) {
+			say "[$chan] !weather $1";
 			lookup_weather $1, sub { $send->( $_ ) for @_ };
 		}
 		elsif ( my @uri = m!\b(https?://\S+)!gi ) {
+			say "[$chan] $_" for @uri;
 			# ensure titles are printed in original sequence of their URIs:
 			my %title;
 			for my $uri ( @uri ) {
