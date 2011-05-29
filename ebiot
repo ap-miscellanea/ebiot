@@ -64,17 +64,11 @@ sub lookup_weather {
 			}
 
 			my ( $cc ) = $doc->findnodes( '//current_conditions' );
-			my ( $outlook ) = map {
-				s!.*/!!;
-				s!\.gif\z!!;
-				join ' ', map ucfirst, split /_+/;
-			} $cc->findvalue( 'icon/@data' );
 
-			my $temp = sprintf "%s\x{B0}F / %s\x{B0}C;  %s, %s", (
+			my $temp = sprintf "%s\x{B0}F / %s\x{B0}C, %s", (
 				$cc->findvalue( 'temp_f/@data' ),
 				$cc->findvalue( 'temp_c/@data' ),
 				$cc->findvalue( 'condition/@data' ),
-				$outlook,
 			);
 
 			$cb->(
