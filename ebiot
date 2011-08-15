@@ -2,6 +2,8 @@
 use 5.010;
 use strict;
 
+use Proc::Fork;
+use POSIX ();
 use AnyEvent::IRC::Client ();
 use AnyEvent::IRC::Util qw( encode_ctcp );
 use AnyEvent::HTTP qw( http_get );
@@ -266,5 +268,25 @@ $irc->reg_cb(
 
 die "usage: $0 <server> <port> <nick> <channel> [channel ...]\n"
 	if 3 > @ARGV;
+
+open my $outfh, '>>', 'ebiot.log'
+	or die "Couldn't open logfile: $!\n";
+
+# daemonize
+run_fork { parent { exit } };
+
+{
+	open my $pidfh, '>', 'ebiot.pid'
+		or die "Couldn't open pidfile: $!\n";
+	say $pidfh $$;
+	close $pidfh
+		or die "Couldn't close pidfile: $!\n";
+}
+
+POSIX::setsid() or die "Cannot start a new session: $!\n";
+close $_ for *STDIN, *STDOUT, *STDERR;
+
+select $outfh;
+$|++;
 
 main_loop $irc, @ARGV;
