@@ -1,0 +1,11 @@
+!8ball
+!define
+!google
+!help
+!hist
+!image
+!thes
+
+page titles:
+* match partial title tag at end of buffer → discard if no match
+* abort after 200KB of data
