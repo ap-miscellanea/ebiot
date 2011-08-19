@@ -107,7 +107,6 @@ sub get_title_for_uri {
 		my $uri = 'http://api.twitter.com/1/statuses/show.json?include_entities=1&id=' . $1;
 
 		http_get $uri, (
-			cookie_jar => \%cookie_jar,
 			sub {
 				my ( $body, $hdr ) = @_;
 
