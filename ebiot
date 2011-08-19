@@ -181,19 +181,16 @@ sub get_tweet {
 				return;
 			}
 
-			my %resolved;
+			my $num_resolved;
 			for my $link ( @$links ) {
 				my $tweeted = $link->{'url'};
-				my $uri     = $link->{'expanded_url'};
-				http_get $uri, (
+				http_get $link->{'expanded_url'}, (
 					cookie_jar => \%cookie_jar,
 					sub {
 						my ( undef, $hdr ) = @_;
 						return if 200 ne $hdr->{'Status'};
-						$resolved{ $tweeted } = $hdr->{'URL'};
-						return if %resolved < @$links;
-						my $rx = join '|', keys %resolved;
-						$tweet =~ s!($rx)!$resolved{ $1 }!g;
+						$tweet =~ s!\Q$tweeted!$hdr->{'URL'}!g;
+						return if ++$num_resolved < @$links;
 						$cb->( "\@$twit: $tweet" );
 					},
 				);
