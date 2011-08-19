@@ -106,11 +106,10 @@ sub get_title_for_uri {
 		when ( m![/.]youtube\..*/user/.*\#.*/(.{11})\z! ) {
 			$uri = 'http://youtube.com/watch?v=' . $1;
 		}
-		when ( s!\Ahttps?://twitter\.com/\#\!/?(.*)!http://twitter.com/$1! ) {}
 	}
 
-	if ( $uri =~ m!twitter\.com/.*/status(?:es)?/\d+! ) {
-		get_tweet $uri, $cb;
+	if ( $uri =~ m!\btwitter\.com/.*/status(?:es)?/(\d+)! ) {
+		get_tweet $1, $cb;
 		return;
 	}
 
@@ -137,52 +136,45 @@ sub get_title_for_uri {
 	);
 }
 
-my $tweet_rx = qr{<meta content="([^"]*)" name="description"}i;
-my $twit_rx = qr{<meta content="([^"]*)" name="page-user-screen_name"}i;
-
 sub get_tweet {
-	my ( $uri, $cb ) = @_;
+	my ( $id, $cb ) = @_;
 
-	my ( $body, $twit, $tweet ) = '';
+	my $uri = 'http://api.twitter.com/1/statuses/show.json?include_entities=1&id=' . $id;
+
 	http_get $uri, (
 		cookie_jar => \%cookie_jar,
-		on_header => sub {
-			my $hdr = shift;
-			return 1 if $hdr->{'Status'} =~ /^3/;
-			return 200 eq $hdr->{'Status'} and $hdr->{'content-type'} =~ m!\Atext/html\s*(?:;|\z)!;
-		},
-		on_body => sub {
-			return 1 if 200 ne $_[1]{'Status'};
-			$body .= shift;
-			$tweet //= ( $body =~ $tweet_rx )[0];
-			$twit  //= ( $body =~ $twit_rx )[0];
-			return if defined $tweet and defined $twit;
-			return 1;
-		},
 		sub {
-			$tweet //= ( $body =~ $tweet_rx )[0];
-			$twit  //= ( $body =~ $twit_rx )[0];
-			return unless defined $tweet and defined $twit;
+			my ( $body, $hdr ) = @_;
 
-			$tweet = HTML::Entities::decode $tweet;
+			return if 200 ne $hdr->{'Status'};
 
-			my @uri = $tweet =~ m!$url_rx!g;
+			my $data = decode_json $body;
 
-			if ( not @uri ) {
+			my $tweet = $data->{'text'};
+			my $twit  = $data->{'user'}{'screen_name'};
+			my $links = $data->{'entities'}{'urls'} // [];
+
+			$tweet =~ s!&lt;!<!g;
+			$tweet =~ s!&gt;!>!g;
+
+			if ( not @$links ) {
 				$cb->( "\@$twit: $tweet" );
 				return;
 			}
 
 			my %resolved;
-			for my $uri ( @uri ) {
+			for my $link ( @$links ) {
+				my $tweeted = $link->{'url'};
+				my $uri     = $link->{'expanded_url'};
 				http_get $uri, (
 					cookie_jar => \%cookie_jar,
 					sub {
 						my ( undef, $hdr ) = @_;
 						return if 200 ne $hdr->{'Status'};
-						$resolved{ $uri } = $hdr->{'URL'};
-						return if %resolved < @uri;
-						$tweet =~ s!$url_rx!$resolved{ $1 }!g;
+						$resolved{ $tweeted } = $hdr->{'URL'};
+						return if %resolved < @$links;
+						my $rx = join '|', keys %resolved;
+						$tweet =~ s!($rx)!$resolved{ $1 }!g;
 						$cb->( "\@$twit: $tweet" );
 					},
 				);
