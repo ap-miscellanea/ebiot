@@ -46,7 +46,7 @@ sub lookup_urbandict {
 	http_get $uri, sub {
 		my ( $body, $hdr ) = @_;
 		$cb->(), return if 200 ne $hdr->{'Status'};
-		my $found  = decode_json $body;
+		my $found = decode_json $body;
 		$cb->( $found->{'result_type'}, $found->{'list'}[0] // {} );
 	};
 }
