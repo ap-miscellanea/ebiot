@@ -136,6 +136,25 @@ sub get_title_for_uri {
 	);
 }
 
+sub get_titles_for_uris {
+	my ( @uri ) = @_;
+	my $cb = pop @uri;
+
+	# ensure titles are printed in original sequence of their URIs:
+	my %title;
+	for my $uri ( @uri ) {
+		get_title_for_uri $uri, sub {
+			my ( $title ) = @_;
+			$title = normalize $title if defined $title;
+			$title{ $uri } = $title;
+			while ( exists $title{ $uri[0] } ) {
+				my $title = $title{ shift @uri } // next;
+				$cb->( $title );
+			}
+		};
+	}
+}
+
 sub get_tweet {
 	my ( $id, $cb ) = @_;
 
@@ -250,19 +269,7 @@ $irc->reg_cb(
 		}
 		elsif ( my @uri = m!$url_rx!g ) {
 			say "[$chan] $_" for @uri;
-			# ensure titles are printed in original sequence of their URIs:
-			my %title;
-			for my $uri ( @uri ) {
-				get_title_for_uri $uri, sub {
-					my ( $title ) = @_;
-					$title = normalize $title if defined $title;
-					$title{ $uri } = $title;
-					while ( exists $title{ $uri[0] } ) {
-						my $title = $title{ shift @uri } // next;
-						$send->( "[ $title ]" );
-					}
-				};
-			}
+			get_titles_for_uris @uri, sub { $send->( "[ $_[0] ]" ) };
 		}
 	}
 );
