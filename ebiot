@@ -96,20 +96,53 @@ tie my %cookie_jar, 'MLDBM', 'cookiejar.db' or die $!;
 
 my $title_rx = qr{<title(?: [^>]*)?>([^<]*)<}i;
 
-sub get_tweet;
-
 sub get_title_for_uri {
 	my ( $uri, $cb ) = @_;
 
-	my $orig_uri = $uri;
-	for ( $uri ) {
-		when ( m![/.]youtube\..*/user/.*\#.*/(.{11})\z! ) {
-			$uri = 'http://youtube.com/watch?v=' . $1;
-		}
+	if ( $uri =~ m![/.]youtube\..*/user/.*\#.*/(.{11})\z! ) {
+		$uri = 'http://youtube.com/watch?v=' . $1;
 	}
 
 	if ( $uri =~ m!\btwitter\.com/.*/status(?:es)?/(\d+)! ) {
-		get_tweet $1, $cb;
+		my $uri = 'http://api.twitter.com/1/statuses/show.json?include_entities=1&id=' . $1;
+
+		http_get $uri, (
+			cookie_jar => \%cookie_jar,
+			sub {
+				my ( $body, $hdr ) = @_;
+
+				return if 200 ne $hdr->{'Status'};
+
+				my $data = decode_json $body;
+
+				my $tweet = $data->{'text'};
+				my $twit  = $data->{'user'}{'screen_name'};
+				my $links = $data->{'entities'}{'urls'} // [];
+
+				$tweet =~ s!&lt;!<!g;
+				$tweet =~ s!&gt;!>!g;
+
+				if ( not @$links ) {
+					$cb->( "\@$twit: $tweet" );
+					return;
+				}
+
+				my $num_resolved;
+				for my $link ( @$links ) {
+					my $tweeted = $link->{'url'};
+					http_get $link->{'expanded_url'}, (
+						cookie_jar => \%cookie_jar,
+						sub {
+							my ( undef, $hdr ) = @_;
+							return if 200 ne $hdr->{'Status'};
+							$tweet =~ s!\Q$tweeted!$hdr->{'URL'}!g;
+							return if ++$num_resolved < @$links;
+							$cb->( "\@$twit: $tweet" );
+						},
+					);
+				}
+			},
+		);
 		return;
 	}
 
@@ -153,50 +186,6 @@ sub get_titles_for_uris {
 			}
 		};
 	}
-}
-
-sub get_tweet {
-	my ( $id, $cb ) = @_;
-
-	my $uri = 'http://api.twitter.com/1/statuses/show.json?include_entities=1&id=' . $id;
-
-	http_get $uri, (
-		cookie_jar => \%cookie_jar,
-		sub {
-			my ( $body, $hdr ) = @_;
-
-			return if 200 ne $hdr->{'Status'};
-
-			my $data = decode_json $body;
-
-			my $tweet = $data->{'text'};
-			my $twit  = $data->{'user'}{'screen_name'};
-			my $links = $data->{'entities'}{'urls'} // [];
-
-			$tweet =~ s!&lt;!<!g;
-			$tweet =~ s!&gt;!>!g;
-
-			if ( not @$links ) {
-				$cb->( "\@$twit: $tweet" );
-				return;
-			}
-
-			my $num_resolved;
-			for my $link ( @$links ) {
-				my $tweeted = $link->{'url'};
-				http_get $link->{'expanded_url'}, (
-					cookie_jar => \%cookie_jar,
-					sub {
-						my ( undef, $hdr ) = @_;
-						return if 200 ne $hdr->{'Status'};
-						$tweet =~ s!\Q$tweeted!$hdr->{'URL'}!g;
-						return if ++$num_resolved < @$links;
-						$cb->( "\@$twit: $tweet" );
-					},
-				);
-			}
-		},
-	);
 }
 
 sub main_loop {
