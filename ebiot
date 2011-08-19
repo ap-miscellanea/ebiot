@@ -4,9 +4,6 @@ use strict;
 
 use Proc::Fork;
 use POSIX ();
-use AnyEvent::IRC::Client ();
-use AnyEvent::IRC::Util qw( encode_ctcp );
-use AnyEvent::HTTP qw( http_get );
 use Getopt::Std;
 use MLDBM qw( DB_File Data::Dumper );
 use URI ();
@@ -14,6 +11,17 @@ use URI::QueryParam ();
 use JSON::XS qw( decode_json );
 use XML::LibXML ();
 use HTML::Entities ();
+
+BEGIN {
+	require Time::Local;
+	require Time::y2038::Everywhere;
+	*Time::Local::timegm    = sub { goto &Time::y2038::timegm };
+	*Time::Local::timelocal = sub { goto &Time::y2038::timelocal };
+}
+
+use AnyEvent::IRC::Client ();
+use AnyEvent::IRC::Util qw( encode_ctcp );
+use AnyEvent::HTTP qw( http_get );
 
 $AnyEvent::HTTP::USERAGENT = 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)';
 
